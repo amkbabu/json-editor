@@ -187,6 +187,17 @@
   box-shadow: 0 6px 16px rgba(168, 237, 234, 0.4);
 }
 
+.format-btn {
+  background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+  color: #2c3e50;
+  box-shadow: 0 4px 12px rgba(255, 236, 210, 0.3);
+}
+
+.format-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 236, 210, 0.4);
+}
+
 .action-btn svg {
   stroke: currentColor;
 }
@@ -249,6 +260,116 @@
 
 .json-textarea-edit::-webkit-scrollbar-thumb:hover {
   background: #4e4e4e;
+}
+
+/* Edit Viewer */
+.edit-viewer {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  overflow-x: auto;
+  max-height: 70vh;
+  overflow-y: auto;
+  border: 2px solid #667eea;
+  border-radius: 8px;
+}
+
+.edit-viewer::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.edit-viewer::-webkit-scrollbar-track {
+  background: #252526;
+}
+
+.edit-viewer::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 6px;
+}
+
+.edit-viewer::-webkit-scrollbar-thumb:hover {
+  background: #4e4e4e;
+}
+
+/* Edit Line */
+.edit-line {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  transition: background-color 0.15s ease;
+}
+
+.edit-line:hover {
+  background-color: #2a2d2e;
+}
+
+/* Edit Line Number */
+.edit-line-number {
+  flex-shrink: 0;
+  width: 50px;
+  padding: 0 12px;
+  text-align: right;
+  color: #858585;
+  background: #1e1e1e;
+  border-right: 1px solid #3e3e42;
+  user-select: none;
+  font-size: 13px;
+}
+
+/* Edit Line Content */
+.edit-line-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+}
+
+/* Edit JSON Content */
+.edit-json-content {
+  white-space: pre;
+  display: inline;
+  color: #d4d4d4;
+  outline: none;
+  min-width: 10px;
+  flex: 1;
+}
+
+.edit-json-content:focus {
+  background-color: #2a2d2e;
+  outline: 1px solid #667eea;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.edit-json-content[contenteditable="true"]:empty:before {
+  content: attr(placeholder);
+  color: #858585;
+  font-style: italic;
+}
+
+/* Edit Toggle Icon */
+.edit-toggle-icon {
+  display: inline-block;
+  width: 16px;
+  color: #d4d4d4;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  margin-right: 4px;
+  transition: color 0.2s ease;
+}
+
+.edit-toggle-icon:hover {
+  color: #ffffff;
+}
+
+.edit-toggle-placeholder {
+  display: inline-block;
+  width: 16px;
+  margin-right: 4px;
 }
 
 /* Textarea Wrapper */
