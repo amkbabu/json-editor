@@ -36,6 +36,11 @@ export class JsonViewer {
   editAllLines: JsonLine[] = [];
   hasUnsavedChanges = signal<boolean>(false);
   isValidJson = signal<boolean>(true);
+  successMessage = signal<string>('');
+  textareaContent = signal<string>('');
+  editableContent = signal<string>('');
+  showFormattedView = signal<boolean>(false);
+  editTextareaValue = signal<string>('');
 
   onFileSelect(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -56,12 +61,17 @@ export class JsonViewer {
       try {
         const content = e.target?.result as string;
         const jsonData = JSON.parse(content);
-        this.rawJsonText.set(JSON.stringify(jsonData, null, 2));
+        const formattedJson = JSON.stringify(jsonData, null, 2);
+        this.rawJsonText.set(formattedJson);
+        this.textareaContent.set(formattedJson);
         this.parseAndDisplay(jsonData);
+        this.successMessage.set('JSON file loaded successfully!');
+        setTimeout(() => this.successMessage.set(''), 3000);
       } catch (error) {
         alert('Invalid JSON file. Please upload a valid JSON file.');
         this.displayLines.set([]);
         this.rawJsonText.set('');
+        this.textareaContent.set('');
         this.fileName.set('');
         input.value = '';
       }
@@ -298,23 +308,42 @@ export class JsonViewer {
     return div.textContent || div.innerText || '';
   }
 
+  onTextareaInput(event: Event): void {
+    const textarea = event.target as HTMLTextAreaElement;
+    const content = textarea.value;
+    this.textareaContent.set(content);
+    
+    // Try to parse and display if valid JSON
+    if (content.trim()) {
+      try {
+        const jsonData = JSON.parse(content);
+        this.rawJsonText.set(JSON.stringify(jsonData, null, 2));
+        this.parseAndDisplay(jsonData);
+        this.validationError.set('');
+      } catch (error) {
+        // Don't show error while typing, just keep textarea
+        this.displayLines.set([]);
+      }
+    } else {
+      this.displayLines.set([]);
+    }
+  }
+
   toggleEditMode(): void {
     if (!this.isEditMode()) {
-      // Enter edit mode
-      this.editedText.set(this.rawJsonText());
+      // Enter edit mode - parse into editable lines
       this.validationError.set('');
       this.hasUnsavedChanges.set(false);
       this.isValidJson.set(true);
-      this.isEditMode.set(true);
-      this.viewMode.set('textarea'); // Switch to textarea for editing
       
-      // Parse current JSON into editable lines
       try {
         const jsonData = JSON.parse(this.rawJsonText());
         this.parseEditLines(jsonData);
       } catch (error) {
         this.editLines.set([]);
       }
+      
+      this.isEditMode.set(true);
     } else {
       // Check for unsaved changes
       if (this.hasUnsavedChanges()) {
@@ -327,82 +356,83 @@ export class JsonViewer {
       this.validationError.set('');
       this.hasUnsavedChanges.set(false);
       this.editLines.set([]);
+      this.editAllLines = [];
     }
   }
 
-  onTextChange(event: Event): void {
-    const textarea = event.target as HTMLTextAreaElement;
-    this.editedText.set(textarea.value);
-    this.validationError.set(''); // Clear error on change
-  }
-
-  validateAndSave(): void {
-    // Reconstruct JSON from edit lines
-    const jsonText = this.reconstructJsonFromLines();
-    
-    try {
-      // Validate JSON
-      const jsonData = JSON.parse(jsonText);
-      
-      // Update the viewer with new data
-      this.rawJsonText.set(JSON.stringify(jsonData, null, 2));
-      this.parseAndDisplay(jsonData);
-      
-      // Exit edit mode
-      this.isEditMode.set(false);
-      this.validationError.set('');
-      this.hasUnsavedChanges.set(false);
-      this.isValidJson.set(true);
-      this.editLines.set([]);
-      
-      // Show success message
-      alert('✓ JSON is valid and saved successfully!');
-    } catch (error) {
-      // Show validation error
-      if (error instanceof Error) {
-        this.validationError.set(`Invalid JSON: ${error.message}`);
-        this.isValidJson.set(false);
-      } else {
-        this.validationError.set('Invalid JSON format');
-        this.isValidJson.set(false);
+  getEditableText(): string {
+    // Only show visible (non-collapsed) lines
+    const visibleLines = this.editAllLines.filter(line => {
+      let parentId = line.parentId;
+      while (parentId) {
+        const parent = this.editAllLines.find(l => l.id === parentId);
+        if (parent?.isCollapsed) return false;
+        parentId = parent?.parentId || null;
       }
+      return true;
+    });
+    return visibleLines.map(line => line.content).join('\n');
+  }
+
+  onEditTextareaChange(event: Event): void {
+    const textarea = event.target as HTMLTextAreaElement;
+    const lines = textarea.value.split('\n');
+    
+    // Get visible lines only
+    const visibleLines = this.editAllLines.filter(line => {
+      let parentId = line.parentId;
+      while (parentId) {
+        const parent = this.editAllLines.find(l => l.id === parentId);
+        if (parent?.isCollapsed) return false;
+        parentId = parent?.parentId || null;
+      }
+      return true;
+    });
+    
+    // Update line contents for visible lines only
+    lines.forEach((content, index) => {
+      if (visibleLines[index]) {
+        visibleLines[index].content = content;
+      }
+    });
+    
+    this.hasUnsavedChanges.set(true);
+    this.validateJsonInRealTime();
+  }
+
+  onEditKeyDown(event: KeyboardEvent): void {
+    // Ctrl+S or Cmd+S to save
+    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+      event.preventDefault();
+      this.validateAndSave();
     }
   }
 
-  downloadJson(): void {
-    const jsonText = this.rawJsonText();
-    const blob = new Blob([jsonText], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = this.fileName() || 'edited.json';
-    link.click();
-    URL.revokeObjectURL(url);
+  onEditScroll(event: Event): void {
+    const textarea = event.target as HTMLTextAreaElement;
+    const sidebar = document.querySelector('.edit-sidebar') as HTMLElement;
+    if (sidebar) {
+      sidebar.scrollTop = textarea.scrollTop;
+    }
   }
 
-  private parseEditLines(data: any): void {
+  parseEditLines(data: any): void {
     this.editAllLines = [];
     let idCounter = 0;
+    const generateId = () => `edit-${idCounter++}`;
     
-    const generateId = () => `edit-line-${idCounter++}`;
-    
-    const buildEditLines = (value: any, key: string | null, level: number, parentId: string | null): string => {
+    const parse = (value: any, key: string | null, level: number, parentId: string | null, isLastItem: boolean = false): void => {
       const currentId = generateId();
+      const indent = '  '.repeat(level);
       const isObject = value !== null && typeof value === 'object' && !Array.isArray(value);
       const isArray = Array.isArray(value);
       
-      let content = '  '.repeat(level);
-      
-      if (key !== null) {
-        content += `"${key}": `;
-      }
-      
       if (isObject) {
-        const keys = Object.keys(value);
-        content += '{';
+        const keyPart = key !== null ? `"${key}": ` : '';
+        const openBraceId = currentId;
         this.editAllLines.push({
-          id: currentId,
-          content,
+          id: openBraceId,
+          content: `${indent}${keyPart}{`,
           level,
           hasToggle: true,
           isCollapsed: false,
@@ -412,25 +442,22 @@ export class JsonViewer {
           originalKey: key,
           isArray: false,
           isObject: true,
-          childCount: keys.length
+          childCount: Object.keys(value).length
         });
         
-        keys.forEach((k, index) => {
-          buildEditLines(value[k], k, level + 1, currentId);
-          if (index < keys.length - 1) {
-            const lastLine = this.editAllLines[this.editAllLines.length - 1];
-            lastLine.content += ',';
-          }
+        const entries = Object.entries(value);
+        entries.forEach(([k, v], index) => {
+          const isLast = index === entries.length - 1;
+          parse(v, k, level + 1, openBraceId, isLast);
         });
         
-        const closeId = generateId();
         this.editAllLines.push({
-          id: closeId,
-          content: '  '.repeat(level) + '}',
+          id: generateId(),
+          content: `${indent}}${isLastItem ? '' : ','}`,
           level,
           hasToggle: false,
           isCollapsed: false,
-          parentId: currentId,
+          parentId: openBraceId,
           lineNumber: 0,
           isClosing: true,
           originalKey: null,
@@ -438,12 +465,12 @@ export class JsonViewer {
           isObject: false,
           childCount: 0
         });
-        
       } else if (isArray) {
-        content += '[';
+        const keyPart = key !== null ? `"${key}": ` : '';
+        const openBracketId = currentId;
         this.editAllLines.push({
-          id: currentId,
-          content,
+          id: openBracketId,
+          content: `${indent}${keyPart}[`,
           level,
           hasToggle: true,
           isCollapsed: false,
@@ -457,21 +484,17 @@ export class JsonViewer {
         });
         
         value.forEach((item: any, index: number) => {
-          buildEditLines(item, null, level + 1, currentId);
-          if (index < value.length - 1) {
-            const lastLine = this.editAllLines[this.editAllLines.length - 1];
-            lastLine.content += ',';
-          }
+          const isLast = index === value.length - 1;
+          parse(item, null, level + 1, openBracketId, isLast);
         });
         
-        const closeId = generateId();
         this.editAllLines.push({
-          id: closeId,
-          content: '  '.repeat(level) + ']',
+          id: generateId(),
+          content: `${indent}]${isLastItem ? '' : ','}`,
           level,
           hasToggle: false,
           isCollapsed: false,
-          parentId: currentId,
+          parentId: openBracketId,
           lineNumber: 0,
           isClosing: true,
           originalKey: null,
@@ -479,21 +502,12 @@ export class JsonViewer {
           isObject: false,
           childCount: 0
         });
-        
       } else {
-        if (typeof value === 'string') {
-          content += `"${value}"`;
-        } else if (typeof value === 'number') {
-          content += `${value}`;
-        } else if (typeof value === 'boolean') {
-          content += `${value}`;
-        } else if (value === null) {
-          content += `null`;
-        }
-        
+        const keyPart = key !== null ? `"${key}": ` : '';
+        const valueStr = JSON.stringify(value);
         this.editAllLines.push({
           id: currentId,
-          content,
+          content: `${indent}${keyPart}${valueStr}${isLastItem ? '' : ','}`,
           level,
           hasToggle: false,
           isCollapsed: false,
@@ -506,76 +520,38 @@ export class JsonViewer {
           childCount: 0
         });
       }
-      
-      return currentId;
     };
     
-    buildEditLines(data, null, 0, null);
+    parse(data, null, 0, null, true);
     this.updateEditDisplayLines();
   }
 
-  private updateEditDisplayLines(): void {
-    const visibleLines: JsonLine[] = [];
-    const collapsedParents = new Set<string>();
-    
-    this.editAllLines.forEach(line => {
-      if (line.isCollapsed) {
-        collapsedParents.add(line.id);
+  renumberEditLines(): void {
+    let lineNum = 1;
+    const visibleLines = this.editAllLines.filter(line => {
+      let parentId = line.parentId;
+      while (parentId) {
+        const parent = this.editAllLines.find(l => l.id === parentId);
+        if (parent?.isCollapsed) return false;
+        parentId = parent?.parentId || null;
       }
+      return true;
     });
     
-    for (const line of this.editAllLines) {
-      let shouldShow = true;
-      
-      let currentParentId = line.parentId;
-      while (currentParentId) {
-        if (collapsedParents.has(currentParentId)) {
-          shouldShow = false;
-          break;
-        }
-        const parent = this.editAllLines.find(l => l.id === currentParentId);
-        currentParentId = parent?.parentId || null;
-      }
-      
-      if (shouldShow) {
-        visibleLines.push(line);
-      }
+    for (const line of visibleLines) {
+      line.lineNumber = lineNum++;
     }
-    
-    visibleLines.forEach((line, index) => {
-      line.lineNumber = index + 1;
-    });
-    
-    this.editLines.set(visibleLines);
   }
 
   toggleEditCollapse(lineId: string): void {
     const line = this.editAllLines.find(l => l.id === lineId);
-    if (line && line.hasToggle) {
-      line.isCollapsed = !line.isCollapsed;
-      
-      if (line.isCollapsed) {
-        const indent = '  '.repeat(line.level);
-        const keyPart = line.originalKey ? `"${line.originalKey}": ` : '';
-        
-        if (line.isObject) {
-          line.content = `${indent}${keyPart}{...} // ${line.childCount} properties`;
-        } else if (line.isArray) {
-          line.content = `${indent}${keyPart}[...] // ${line.childCount} items`;
-        }
-      } else {
-        const indent = '  '.repeat(line.level);
-        const keyPart = line.originalKey ? `"${line.originalKey}": ` : '';
-        
-        if (line.isObject) {
-          line.content = `${indent}${keyPart}{`;
-        } else if (line.isArray) {
-          line.content = `${indent}${keyPart}[`;
-        }
-      }
-      
-      this.updateEditDisplayLines();
-    }
+    if (!line || !line.hasToggle) return;
+
+    // Toggle collapsed state
+    line.isCollapsed = !line.isCollapsed;
+
+    // Update the display
+    this.updateEditDisplayLines();
   }
 
   onLineContentChange(lineId: string, event: Event): void {
@@ -618,6 +594,129 @@ export class JsonViewer {
     }
   }
 
+  onKeyDown(event: KeyboardEvent, lineId: string): void {
+    // Ctrl+S or Cmd+S to save
+    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+      event.preventDefault();
+      this.validateAndSave();
+    }
+    
+    // Tab key handling
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      const selection = window.getSelection();
+      const range = selection?.getRangeAt(0);
+      if (range) {
+        const tabNode = document.createTextNode('  ');
+        range.insertNode(tabNode);
+        range.setStartAfter(tabNode);
+        range.collapse(true);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+    }
+  }
+
+  reconstructJsonFromEditLines(): string {
+    return this.editAllLines.map(line => line.content).join('\n');
+  }
+
+  validateAndSave(): void {
+    try {
+      // Reconstruct and validate JSON from edit lines
+      const jsonText = this.reconstructJsonFromEditLines();
+      const jsonData = JSON.parse(jsonText);
+      
+      // Update the viewer with new data
+      const formattedJson = JSON.stringify(jsonData, null, 2);
+      this.rawJsonText.set(formattedJson);
+      this.textareaContent.set(formattedJson);
+      this.parseAndDisplay(jsonData);
+      
+      // Exit edit mode
+      this.isEditMode.set(false);
+      this.validationError.set('');
+      this.hasUnsavedChanges.set(false);
+      this.isValidJson.set(true);
+      this.editLines.set([]);
+      this.editAllLines = [];
+      
+      // Show success message
+      this.successMessage.set('JSON validated and saved successfully!');
+      setTimeout(() => this.successMessage.set(''), 3000);
+    } catch (error) {
+      // Show validation error
+      if (error instanceof Error) {
+        this.validationError.set(`Invalid JSON: ${error.message}`);
+        this.isValidJson.set(false);
+      } else {
+        this.validationError.set('Invalid JSON format');
+        this.isValidJson.set(false);
+      }
+    }
+  }
+
+  downloadJson(): void {
+    const jsonText = this.rawJsonText();
+    const blob = new Blob([jsonText], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = this.fileName() || 'edited.json';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  formatJson(): void {
+    try {
+      const jsonText = this.reconstructJsonFromEditLines();
+      const jsonData = JSON.parse(jsonText);
+      this.parseEditLines(jsonData);
+      this.hasUnsavedChanges.set(true);
+      this.validationError.set('');
+      this.isValidJson.set(true);
+    } catch (error) {
+      if (error instanceof Error) {
+        this.validationError.set(`Cannot format: ${error.message}`);
+      }
+    }
+  }
+
+  private updateEditDisplayLines(): void {
+    const visibleLines: JsonLine[] = [];
+    const collapsedParents = new Set<string>();
+    
+    this.editAllLines.forEach(line => {
+      if (line.isCollapsed) {
+        collapsedParents.add(line.id);
+      }
+    });
+    
+    for (const line of this.editAllLines) {
+      let shouldShow = true;
+      
+      let currentParentId = line.parentId;
+      while (currentParentId) {
+        if (collapsedParents.has(currentParentId)) {
+          shouldShow = false;
+          break;
+        }
+        const parent = this.editAllLines.find(l => l.id === currentParentId);
+        currentParentId = parent?.parentId || null;
+      }
+      
+      if (shouldShow) {
+        visibleLines.push(line);
+      }
+    }
+    
+    visibleLines.forEach((line, index) => {
+      line.lineNumber = index + 1;
+    });
+    
+    this.editLines.set(visibleLines);
+  }
+
   private validateJsonInRealTime(): void {
     try {
       const jsonText = this.reconstructJsonFromLines();
@@ -652,41 +751,67 @@ export class JsonViewer {
     return visibleLines.map(line => line.content).join('\n');
   }
 
-  formatJson(): void {
-    try {
-      const jsonText = this.reconstructJsonFromLines();
-      const jsonData = JSON.parse(jsonText);
-      this.parseEditLines(jsonData);
-      this.hasUnsavedChanges.set(true);
-      this.validationError.set('');
-      this.isValidJson.set(true);
-    } catch (error) {
-      if (error instanceof Error) {
-        this.validationError.set(`Cannot format: ${error.message}`);
-      }
+  expandAll(): void {
+    if (this.isEditMode()) {
+      this.editAllLines.forEach(line => {
+        if (line.hasToggle && line.isCollapsed) {
+          line.isCollapsed = false;
+          const indent = '  '.repeat(line.level);
+          const keyPart = line.originalKey ? `"${line.originalKey}": ` : '';
+          if (line.isObject) {
+            line.content = `${indent}${keyPart}{`;
+          } else if (line.isArray) {
+            line.content = `${indent}${keyPart}[`;
+          }
+        }
+      });
+      this.updateEditDisplayLines();
+    } else {
+      this.allLines.forEach(line => {
+        if (line.hasToggle && line.isCollapsed) {
+          line.isCollapsed = false;
+          const indent = '  '.repeat(line.level);
+          const keyPart = line.originalKey ? `<span class="key">"${line.originalKey}"</span><span class="colon">: </span>` : '';
+          if (line.isObject) {
+            line.content = `${indent}${keyPart}<span class="bracket">{</span>`;
+          } else if (line.isArray) {
+            line.content = `${indent}${keyPart}<span class="bracket">[</span>`;
+          }
+        }
+      });
+      this.updateDisplayLines();
     }
   }
 
-  onKeyDown(event: KeyboardEvent, lineId: string): void {
-    // Ctrl+S or Cmd+S to save
-    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-      event.preventDefault();
-      this.validateAndSave();
-    }
-    
-    // Tab key handling
-    if (event.key === 'Tab') {
-      event.preventDefault();
-      const selection = window.getSelection();
-      const range = selection?.getRangeAt(0);
-      if (range) {
-        const tabNode = document.createTextNode('  ');
-        range.insertNode(tabNode);
-        range.setStartAfter(tabNode);
-        range.setEndAfter(tabNode);
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-      }
+  collapseAll(): void {
+    if (this.isEditMode()) {
+      this.editAllLines.forEach(line => {
+        if (line.hasToggle && !line.isCollapsed) {
+          line.isCollapsed = true;
+          const indent = '  '.repeat(line.level);
+          const keyPart = line.originalKey ? `"${line.originalKey}": ` : '';
+          if (line.isObject) {
+            line.content = `${indent}${keyPart}{...} // ${line.childCount} properties`;
+          } else if (line.isArray) {
+            line.content = `${indent}${keyPart}[...] // ${line.childCount} items`;
+          }
+        }
+      });
+      this.updateEditDisplayLines();
+    } else {
+      this.allLines.forEach(line => {
+        if (line.hasToggle && !line.isCollapsed) {
+          line.isCollapsed = true;
+          const indent = '  '.repeat(line.level);
+          const keyPart = line.originalKey ? `<span class="key">"${line.originalKey}"</span><span class="colon">: </span>` : '';
+          if (line.isObject) {
+            line.content = `${indent}${keyPart}<span class="bracket">{...}</span> <span class="comment">// ${line.childCount} properties</span>`;
+          } else if (line.isArray) {
+            line.content = `${indent}${keyPart}<span class="bracket">[...]</span> <span class="comment">// ${line.childCount} items</span>`;
+          }
+        }
+      });
+      this.updateDisplayLines();
     }
   }
 }
