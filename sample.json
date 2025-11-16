@@ -1,0 +1,61 @@
+{
+  "name": "John Doe",
+  "age": 30,
+  "isActive": true,
+  "email": "john.doe@example.com",
+  "address": {
+    "street": "123 Main St",
+    "city": "New York",
+    "state": "NY",
+    "zipCode": "10001",
+    "coordinates": {
+      "latitude": 40.7128,
+      "longitude": -74.0060
+    }
+  },
+  "phoneNumbers": [
+    {
+      "type": "home",
+      "number": "212-555-1234"
+    },
+    {
+      "type": "work",
+      "number": "212-555-5678"
+    }
+  ],
+  "hobbies": ["reading", "traveling", "photography"],
+  "education": {
+    "degree": "Bachelor of Science",
+    "major": "Computer Science",
+    "university": "MIT",
+    "graduationYear": 2015
+  },
+  "skills": ["JavaScript", "TypeScript", "Angular", "React", "Node.js"],
+  "experience": [
+    {
+      "company": "Tech Corp",
+      "position": "Senior Developer",
+      "startDate": "2020-01-15",
+      "endDate": null,
+      "responsibilities": [
+        "Lead development team",
+        "Code reviews",
+        "Architecture decisions"
+      ]
+    },
+    {
+      "company": "StartUp Inc",
+      "position": "Full Stack Developer",
+      "startDate": "2017-06-01",
+      "endDate": "2019-12-31",
+      "responsibilities": [
+        "Frontend development",
+        "Backend API development",
+        "Database design"
+      ]
+    }
+  ],
+  "certifications": null,
+  "isVerified": true,
+  "lastLogin": "2024-11-15T10:30:00Z"
+}
