@@ -376,28 +376,10 @@ export class JsonViewer {
 
   onEditTextareaChange(event: Event): void {
     const textarea = event.target as HTMLTextAreaElement;
-    const lines = textarea.value.split('\n');
-    
-    // Get visible lines only
-    const visibleLines = this.editAllLines.filter(line => {
-      let parentId = line.parentId;
-      while (parentId) {
-        const parent = this.editAllLines.find(l => l.id === parentId);
-        if (parent?.isCollapsed) return false;
-        parentId = parent?.parentId || null;
-      }
-      return true;
-    });
-    
-    // Update line contents for visible lines only
-    lines.forEach((content, index) => {
-      if (visibleLines[index]) {
-        visibleLines[index].content = content;
-      }
-    });
-    
     this.hasUnsavedChanges.set(true);
-    this.validateJsonInRealTime();
+    
+    // Don't update editAllLines during typing to avoid interference
+    // Only validate on save
   }
 
   onEditKeyDown(event: KeyboardEvent): void {
@@ -569,7 +551,6 @@ export class JsonViewer {
     if (line) {
       line.content = newContent;
       this.hasUnsavedChanges.set(true);
-      this.validateJsonInRealTime();
       
       // Restore cursor position after Angular updates
       setTimeout(() => {
@@ -623,8 +604,9 @@ export class JsonViewer {
 
   validateAndSave(): void {
     try {
-      // Reconstruct and validate JSON from edit lines
-      const jsonText = this.reconstructJsonFromEditLines();
+      // Get JSON directly from textarea
+      const textarea = document.querySelector('.edit-textarea') as HTMLTextAreaElement;
+      const jsonText = textarea ? textarea.value : this.reconstructJsonFromEditLines();
       const jsonData = JSON.parse(jsonText);
       
       // Update the viewer with new data
@@ -669,8 +651,10 @@ export class JsonViewer {
 
   formatJson(): void {
     try {
-      const jsonText = this.reconstructJsonFromEditLines();
-      const jsonData = JSON.parse(jsonText);
+      const textarea = document.querySelector('.edit-textarea') as HTMLTextAreaElement;
+      if (!textarea) return;
+      
+      const jsonData = JSON.parse(textarea.value);
       this.parseEditLines(jsonData);
       this.hasUnsavedChanges.set(true);
       this.validationError.set('');
@@ -717,19 +701,7 @@ export class JsonViewer {
     this.editLines.set(visibleLines);
   }
 
-  private validateJsonInRealTime(): void {
-    try {
-      const jsonText = this.reconstructJsonFromLines();
-      JSON.parse(jsonText);
-      this.validationError.set('');
-      this.isValidJson.set(true);
-    } catch (error) {
-      if (error instanceof Error) {
-        this.validationError.set(`Syntax Error: ${error.message}`);
-      }
-      this.isValidJson.set(false);
-    }
-  }
+
 
   private reconstructJsonFromLines(): string {
     const visibleLines = this.editAllLines.filter(line => {
@@ -753,6 +725,10 @@ export class JsonViewer {
 
   expandAll(): void {
     if (this.isEditMode()) {
+      // Don't operate on editAllLines directly, just update the textarea
+      const textarea = document.querySelector('.edit-textarea') as HTMLTextAreaElement;
+      if (!textarea || !textarea.value.trim()) return; // Don't expand if textarea is empty
+      
       this.editAllLines.forEach(line => {
         if (line.hasToggle && line.isCollapsed) {
           line.isCollapsed = false;
@@ -785,6 +761,10 @@ export class JsonViewer {
 
   collapseAll(): void {
     if (this.isEditMode()) {
+      // Don't operate on editAllLines directly, just update the textarea
+      const textarea = document.querySelector('.edit-textarea') as HTMLTextAreaElement;
+      if (!textarea || !textarea.value.trim()) return; // Don't collapse if textarea is empty
+      
       this.editAllLines.forEach(line => {
         if (line.hasToggle && !line.isCollapsed) {
           line.isCollapsed = true;
