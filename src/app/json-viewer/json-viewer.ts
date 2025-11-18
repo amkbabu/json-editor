@@ -41,6 +41,7 @@ export class JsonViewer {
   editableContent = signal<string>('');
   showFormattedView = signal<boolean>(false);
   editTextareaValue = signal<string>('');
+  private lastTextareaLineCount = 0;
 
   onFileSelect(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -378,8 +379,60 @@ export class JsonViewer {
     const textarea = event.target as HTMLTextAreaElement;
     this.hasUnsavedChanges.set(true);
     
-    // Don't update editAllLines during typing to avoid interference
-    // Only validate on save
+    const currentLineCount = textarea.value.split('\n').length;
+    const lineCountDiff = Math.abs(currentLineCount - this.lastTextareaLineCount);
+    
+    // Detect undo/redo: significant line count change (more than 5 lines)
+    const isLikelyUndoRedo = lineCountDiff > 5;
+    
+    // Validate JSON in real-time
+    try {
+      if (textarea.value.trim()) {
+        const parsedJson = JSON.parse(textarea.value);
+        this.validationError.set('');
+        this.isValidJson.set(true);
+        
+        // Only regenerate structure on undo/redo, not during normal editing
+        if (isLikelyUndoRedo) {
+          this.parseEditLines(parsedJson);
+        } else {
+          // Just update line numbers for normal editing
+          this.updateLineNumbersFromTextarea(textarea);
+        }
+      } else {
+        this.validationError.set('');
+        this.isValidJson.set(false);
+        this.updateLineNumbersFromTextarea(textarea);
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        this.validationError.set(`Syntax Error: ${error.message}`);
+      }
+      this.isValidJson.set(false);
+      this.updateLineNumbersFromTextarea(textarea);
+    }
+    
+    // Update the last line count
+    this.lastTextareaLineCount = currentLineCount;
+  }
+
+  updateLineNumbersFromTextarea(textarea: HTMLTextAreaElement): void {
+    const lines = textarea.value.split('\n');
+    const lineCount = lines.length;
+    
+    // Create temporary line array for display
+    const tempLines: any[] = [];
+    for (let i = 0; i < lineCount; i++) {
+      tempLines.push({
+        id: `temp-${i}`,
+        lineNumber: i + 1,
+        hasToggle: false,
+        isCollapsed: false,
+        content: lines[i]
+      });
+    }
+    
+    this.editLines.set(tempLines);
   }
 
   onEditKeyDown(event: KeyboardEvent): void {
